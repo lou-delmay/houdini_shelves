@@ -17,12 +17,14 @@ nodes = hou.selectedNodes()
 hou.clearAllSelected()
 if len(nodes)==0:
     wrangle = current.createNode('attribwrangle',node_name="Wrangle_001")
+    wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
     wrangle.setColor(randomcolor)
     wrangle.setCurrent(True)
     wrangle.setPosition(hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor).cursorPosition())
 for node in nodes:
     connections = node.outputConnections()
     wrangle = node.parent().createNode('attribwrangle',node_name="Wrangle_001")
+    wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
     wrangle.setColor(randomcolor)
     wrangle.setInput(0,node)
     for connection in connections:
