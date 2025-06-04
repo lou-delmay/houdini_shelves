@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <!-- This file contains definitions of shelves, toolbars, and tools.
+ It should not be hand-edited when it is being used by the application.
+ Note, that two definitions of the same element are not allowed in
+ a single file. -->
+
+  <tool name="rand_color" label="Random Color" icon="SOP_hairgrowthfield">
+    <script scriptType="python"><![CDATA[import time, random, string
+random.seed(time.time())
+randomcolor = hou.Color(1.0,1.0,1.0)
+randomcolor.setHSV((random.random()*360,0.8,1.0))
+nodes = hou.selectedNodes()
+for node in nodes:
+    node.setColor(randomcolor)]]></script>
+  </tool>
+</shelfDocument>

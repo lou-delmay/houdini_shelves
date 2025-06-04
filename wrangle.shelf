@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <!-- This file contains definitions of shelves, toolbars, and tools.
+ It should not be hand-edited when it is being used by the application.
+ Note, that two definitions of the same element are not allowed in
+ a single file. -->
+
+  <tool name="append_wrangle" label="Append Wrangle" icon="SOP_attribwrangle">
+    <helpText><![CDATA[Press W
+]]></helpText>
+    <script scriptType="python"><![CDATA[import time, random
+random.seed(time.time())
+randomcolor = hou.Color(1.0,1.0,1.0)
+randomcolor.setHSV((random.random()*360,0.8,1.0))
+current = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor).pwd()
+nodes = hou.selectedNodes()
+hou.clearAllSelected()
+if len(nodes)==0:
+    wrangle = current.createNode('attribwrangle',node_name="Wrangle_001")
+    wrangle.setColor(randomcolor)
+    wrangle.setCurrent(True)
+    wrangle.setPosition(hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor).cursorPosition())
+for node in nodes:
+    connections = node.outputConnections()
+    wrangle = node.parent().createNode('attribwrangle',node_name="Wrangle_001")
+    wrangle.setColor(randomcolor)
+    wrangle.setInput(0,node)
+    for connection in connections:
+        connection.outputNode().setInput(connection.inputIndex(),wrangle)
+    wrangle.moveToGoodPosition(move_inputs=False)
+    wrangle.setSelected(True)]]></script>
+  </tool>
+</shelfDocument>
