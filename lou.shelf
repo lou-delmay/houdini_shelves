@@ -13,5 +13,6 @@
     <memberTool name="openhip"/>
     <memberTool name="dustHair"/>
     <memberTool name="wedgemagick"/>
+    <memberTool name="append_object_merge"/>
   </toolshelf>
 </shelfDocument>
