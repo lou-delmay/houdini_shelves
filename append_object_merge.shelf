@@ -12,13 +12,13 @@ randomcolor = hou.Color(1.0,1.0,1.0)
 randomcolor.setHSV((random.random()*360,0.8,1.0))
 current = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor).pwd()
 nodes = hou.selectedNodes()
-hou.clearAllSelected()
+#hou.clearAllSelected()
 for node in nodes:
     connections = node.outputConnections()
     object_merge = current.createNode('object_merge',node_name=node.name()+"_merge_001")
     object_merge.parm("objpath1").set(object_merge.relativePathTo(node))
     object_merge.setColor(randomcolor)
     object_merge.setPosition(node.position()+(hou.Vector2(0.0,-1.0)))
-    object_merge.setSelected(True)]]></script>
+    #object_merge.setSelected(True)]]></script>
   </tool>
 </shelfDocument>
