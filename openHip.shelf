@@ -8,8 +8,8 @@
   <tool name="openHIP" label="open HIP" icon="PLASMA_App">
     <script scriptType="python"><![CDATA[import os
 
-hip = hou.hscriptExpression('$HIP')
-os.system("nemo "+hip+" &")
+
+os.system("explorer .")
 ]]></script>
   </tool>
 
