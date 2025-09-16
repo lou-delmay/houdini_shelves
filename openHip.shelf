@@ -12,4 +12,10 @@ hip = hou.hscriptExpression('$HIP')
 os.system("nemo "+hip+" &")
 ]]></script>
   </tool>
+
+  <tool name="open_folder" label="Open Folder" icon="hicon:/SVGIcons.index?BUTTONS_folder.svg">
+    <script scriptType="python"><![CDATA[import os
+
+os.system("explorer .")]]></script>
+  </tool>
 </shelfDocument>

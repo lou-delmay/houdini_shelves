@@ -10,9 +10,9 @@
     <memberTool name="cache"/>
     <memberTool name="rand_color"/>
     <memberTool name="rainbow"/>
-    <memberTool name="openhip"/>
     <memberTool name="dustHair"/>
     <memberTool name="wedgemagick"/>
     <memberTool name="append_object_merge"/>
+    <memberTool name="open_folder"/>
   </toolshelf>
 </shelfDocument>
