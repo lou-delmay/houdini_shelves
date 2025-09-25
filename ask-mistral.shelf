@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <!-- This file contains definitions of shelves, toolbars, and tools.
+ It should not be hand-edited when it is being used by the application.
+ Note, that two definitions of the same element are not allowed in
+ a single file. -->
+
+  <tool name="ask-mistral" label="Ask Mistral" icon="hicon:/SVGIcons.index?DATATYPES_code_method.svg">
+    <script scriptType="python"><![CDATA[import hou
+from PySide2 import QtWidgets
+from PySide2.QtCore import Qt
+from PySide2.QtCore import QThreadPool, QRunnable, Signal
+import os
+from mistralai import Mistral
+import markdown
+
+api_key = os.environ["MISTRAL_API_KEY"]
+model = "mistral-small-latest"
+client = Mistral(api_key=api_key)
+
+class ApiCallRunnable(QRunnable):
+    def __init__(self, ask_mistral_instance):
+        super(ApiCallRunnable, self).__init__()
+        self.ask_mistral_instance = ask_mistral_instance
+
+    def run(self):
+        stream_response = client.chat.stream(
+            model=model,
+            messages=self.ask_mistral_instance.messages
+        )
+        self.ask_mistral_instance.messages.append(
+            {
+                "role": "system",
+                "content": "",
+            },
+        )
+        for chunk in stream_response:
+            content = chunk.data.choices[0].delta.content
+            self.ask_mistral_instance.messages[len(self.ask_mistral_instance.messages)-1]["content"] += content
+            self.ask_mistral_instance.update_response_text.emit()
+
+class AskMistral(QtWidgets.QDialog):
+    update_response_text = Signal()
+    def __init__(self, parent=None):
+        super(AskMistral, self).__init__(parent)
+        self.setWindowTitle("Ask Mistral")
+        self.setMinimumSize(1000, 300)
+
+        self.messages = [
+            {
+                "role": "system",
+                "content": "What can I do for you today ?",
+            },
+        ]
+
+        layout = QtWidgets.QVBoxLayout(self)
+
+        scroll_area = QtWidgets.QScrollArea(self)
+        scroll_area.setWidgetResizable(True)  # Allow the widget to resize
+        #scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        self.response_text = QtWidgets.QLabel()
+        self.response_text.setWordWrap(True)
+        scroll_area.setWidget(self.response_text)
+        layout.addWidget(scroll_area)
+
+        self.text_prompt = QtWidgets.QTextEdit("")
+        layout.addWidget(self.text_prompt)
+        
+        button = QtWidgets.QPushButton("Send", self)
+        button.clicked.connect(self.send_messages)
+        
+        layout.addWidget(button)
+        self.update_response_text_slot()
+        self.update_response_text.connect(self.update_response_text_slot)
+
+        self.setLayout(layout)
+
+    def update_response_text_slot(self):
+        newtext = "\n"
+        for message in self.messages:
+            if message["role"]=="system":
+                newtext+="# System :\n"
+            else:
+                newtext+="# User :\n"
+            newtext += message["content"]
+            newtext += "\n"
+        html_text = markdown.markdown(newtext)
+        self.response_text.setText(html_text)
+
+    def send_messages(self):
+        self.messages.append(
+            {
+                "role": "user",
+                "content": self.text_prompt.document().toPlainText(),
+            },
+        )
+        # Create and start the runnable
+        runnable = ApiCallRunnable(self)
+        QThreadPool.globalInstance().start(runnable)
+
+        
+        
+parent = hou.ui.mainQtWindow()
+dialog = AskMistral(parent)
+dialog.exec_()]]></script>
+  </tool>
+</shelfDocument>
