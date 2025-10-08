@@ -15,5 +15,6 @@
     <memberTool name="append_object_merge"/>
     <memberTool name="open_folder"/>
     <memberTool name="ask-mistral"/>
+    <memberTool name="dailies"/>
   </toolshelf>
 </shelfDocument>
