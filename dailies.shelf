@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <!-- This file contains definitions of shelves, toolbars, and tools.
+ It should not be hand-edited when it is being used by the application.
+ Note, that two definitions of the same element are not allowed in
+ a single file. -->
+
+  <tool name="dailies" label="Dailies" icon="hicon:/SVGIcons.index?COP_contactsheet.svg">
+    <script scriptType="python"><![CDATA[import hou
+import os
+import subprocess
+import math
+
+karmalist = []
+cop = hou.node("/stage").createNode("copnet")
+
+for child in hou.node("/stage").children():
+    if child.type().name() == "karmarenderproperties" and not child.isBypassed():
+        karmalist.append(child)
+
+
+from PySide2.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QScrollArea, QWidget, QHBoxLayout, QPushButton, QApplication, QTableWidgetItem, QTableWidget, QLabel
+
+class ContactSheetDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Custom Dialog")
+        self.setModal(True)
+        self.resize(400, 300)
+
+        # Main layout
+        self.main_layout = QVBoxLayout(self)
+
+        # Add Preview and Contact Sheet checkboxes
+        self.preview_checkbox = QCheckBox("Preview", self)
+        self.preview_checkbox.setChecked(True)
+        self.contact_sheet_checkbox = QCheckBox("Contact Sheet", self)
+        self.contact_sheet_checkbox.setChecked(True)
+        self.main_layout.addWidget(self.preview_checkbox)
+        self.main_layout.addWidget(self.contact_sheet_checkbox)
+
+        # Create a table widget
+        self.table_widget = QTableWidget(self)
+        self.table_widget.setColumnCount(2)
+        self.table_widget.setRowCount(len(karmalist))
+
+        # Set the header labels
+        self.table_widget.setColumnWidth(0, 400)
+        self.table_widget.setColumnWidth(1, 400)
+        self.table_widget.setHorizontalHeaderLabels(["Render Settings","Output Images"])
+
+        self.karma_checkboxes = []
+        # Add checkboxes to the table
+        for i in range(len(karmalist)):
+            karma_checkbox = QCheckBox(karmalist[i].name(), self)
+            karma_checkbox.setChecked(True)
+            karma_label = QLabel(karmalist[i].parm("picture").eval())
+            self.table_widget.setCellWidget(i, 0, karma_checkbox)
+            self.table_widget.setCellWidget(i, 1, karma_label)
+            self.karma_checkboxes.append(karma_checkbox)
+
+        self.main_layout.addWidget(self.table_widget)
+
+        # Add Render and Cancel buttons
+        self.button_layout = QHBoxLayout()
+        self.render_button = QPushButton("Render", self)
+        self.cancel_button = QPushButton("Cancel", self)
+        self.button_layout.addWidget(self.render_button)
+        self.button_layout.addWidget(self.cancel_button)
+        self.main_layout.addLayout(self.button_layout)
+
+
+script = "vector ind = volumepostoindex(0,\"C\",@P); \n vector sz = volumeres(0,\"C\");\nif(ind.x==0 || ind.y==0 || ind.x==sz.x-1 || ind.y==sz.y-1){@C=1.0;}"
+script2 = "vector ind_A = volumepostoindex(0,\"C\",@P);\nvector sz_A = volumeres(0,\"C\");\nvector sz_B = volumeres(0,\"font\");\nvector min_B = volumeindextopos(0,\"font\",set(0.0,0.0,0.0));\nvector max_B = volumeindextopos(0,\"font\",set(sz_B.x-1,sz_B.y-1,0.0));\n@C += volumesample(0,\"font\",\nset(fit(ind_A.x,0,sz_A.x-1,min_B.x,max_B.x),fit(fit(ind_A.y,0,sz_A.y-1,0.0,1.0),0.0,0.04761904761,min_B.y,max_B.y),0.0));"
+script3 = "int resx = i@resx;\nint resy = i@resy;\nint multiple_of_eight(int x)\n{return shl(shr(x,3),3)==x;}\nfor(int i = 0; i < 8; i++){if(multiple_of_eight(resx)){break;}resx--;}\nfor(int i = 0; i < 8; i++){if(multiple_of_eight(resy)){break;}resy--;}\nif(i@ix>resx-1 || i@iy>resy-1){@C = 0.;}\nelse{vector min = volumeindextopos(0,\"C\",set(0.0,0.0,0.0));vector max = volumeindextopos(0,\"C\",set(i@resx-1,i@resy-1,0.0));@C = volumesamplep(0,\"C\",set(fit(@ix,0,resx-1,min.x,max.x),fit(@iy,0,resy-1,min.y,max.y),0.0));}"
+script4a = "vector ind_A = volumepostoindex(0,\"C\",@P);\nvector sz_A = volumeres(0,\"C\");\nvector sz_B = volumeres(0,\"font\");\nvector min_B = volumeindextopos(0,\"font\",set(0.0,0.0,0.0));\nvector max_B = volumeindextopos(0,\"font\",set(sz_B.x-1,sz_B.y-1,0.0));\n@C += volumesample(0,\"font\",\nset(fit(ind_A.x,0,sz_A.x-1,min_B.x,max_B.x),fit(fit(ind_A.y,0,sz_A.y-1,0.0,1.0),0.0,"
+script4b = ",min_B.y,max_B.y),0.0));"
+
+dialog = ContactSheetDialog()
+dialog.exec_()
+
+resize = 0.4
+font_file = "Source Code Pro Medium"
+font_size = 0.06
+do_preview = True
+do_contactsheet = True
+
+for karma in karmalist:
+    path = os.path.abspath(hou.evalParm(karma.path()+"/picture"))
+    path = os.path.normpath(path.rsplit(".",2)[0]+".$F4.exr")
+    resx = hou.evalParm(karma.path()+"/resolutionx")
+    resy = hou.evalParm(karma.path()+"/resolutiony")
+    other_nodes_in_this_layer = cop.children()
+    
+    # CLEAN
+    for child in other_nodes_in_this_layer:
+        child.destroy()
+    
+    # LOAD
+    file_node = cop.createNode("file")
+    file_node.moveToGoodPosition(move_inputs=False)
+    file_node.parm("filename").set(path)
+    if do_contactsheet:
+        file_node.parm("addaovs").pressButton()
+    else:
+        file_node.parm("aovs").set(1)
+        file_node.parm("aov1").set("C")
+    outputs = file_node.parm("aovs").evalAsInt()
+    xtile = min(4,outputs)
+    ytile = (1+math.floor(max(0,outputs-1)/4))
+    script4 = script4a+str(0.18/ytile)+script4b
+    
+    # LAYER
+    layer_node = cop.createNode("layer")
+    layer_node.parm("setres").set(1)
+    layer_node.parm("resx").set(resx*resize)
+    layer_node.parm("resy").set(resy/20*resize)
+    layer_node.moveToGoodPosition(move_inputs=False)
+    
+    # LAYER 2
+    layer_node2 = cop.createNode("layer")
+    layer_node2.parm("setres").set(1)
+    layer_node2.parm("resx").set(resx*resize)
+    layer_node2.parm("resy").set(resy*resize*1.05/20.0)
+    layer_node2.moveToGoodPosition(move_inputs=False)
+    
+    # LAYER 3
+    layer_node3 = cop.createNode("layer")
+    layer_node3.parm("setres").set(1)
+    layer_node3.parm("resx").set(resx)
+    layer_node3.parm("resy").set(resy/20)
+    layer_node3.moveToGoodPosition(move_inputs=False)
+    
+    # FONT 2
+    font2 = cop.createNode("font")
+    font2.parm("fontsize").set(font_size)
+    font2.parm("file").set(font_file)
+    font2.parm("text").set(karma.name()+" - Frame: $F")
+    font2.setInput(0,layer_node3,0)
+    font2.moveToGoodPosition(move_inputs=False)
+    
+    # WRANGLE 4
+    wrangle4 = cop.createNode("wrangle")
+    wrangle4.parm("vexsnippet").set(script)
+    wrangle4.setInput(0,file_node,0)
+    wrangle4.moveToGoodPosition(move_inputs=False)
+    
+    # CROP 2
+    crop2 = cop.createNode("crop")
+    crop2.parm("border").set(1)
+    crop2.parm("units").set(1)
+    crop2.parm("usemaxres").set(0)
+    crop2.parm("xy_texturey").set(-0.05)
+    crop2.setInput(0,wrangle4,0)
+    crop2.moveToGoodPosition(move_inputs=False)
+    
+    # WRANGLE 5
+    wrangle5 = cop.createNode("wrangle")
+    wrangle5.parm("vexsnippet").set(script)
+    wrangle5.setInput(0,crop2,0)
+    wrangle5.moveToGoodPosition(move_inputs=False)
+    
+    # WRANGLE 6
+    wrangle6 = cop.createNode("wrangle")
+    wrangle6.parm("vexsnippet").set(script2)
+    wrangle6.setInput(0,wrangle5,0)
+    wrangle6.parm("aovs").set(2)
+    wrangle6.parm("type2").set(0)
+    wrangle6.parm("layer2").set("font")
+    wrangle6.setInput(1,font2,0)
+    wrangle6.moveToGoodPosition(move_inputs=False)
+    
+    # WRANGLE 7
+    wrangle7 = cop.createNode("wrangle")
+    wrangle7.parm("vexsnippet").set(script3)
+    wrangle7.setInput(0,wrangle6,0)
+    wrangle7.moveToGoodPosition(move_inputs=False)
+    
+    # MONO
+    mono2 = cop.createNode("mono")
+    mono2.setInput(0,wrangle7,0)
+    mono2.moveToGoodPosition(move_inputs=False)
+    
+    # BOUND RECT
+    bound_rect2 = cop.createNode("boundrect")
+    bound_rect2.setInput(0,mono2,0)
+    bound_rect2.moveToGoodPosition(move_inputs=False)
+    
+    # LAST CROP
+    last_crop2 = cop.createNode("crop")
+    last_crop2.setInput(0,wrangle7,0)
+    last_crop2.setInput(2,bound_rect2,1)
+    last_crop2.parm("mode").set(1)
+    last_crop2.moveToGoodPosition(move_inputs=False)
+    resampled = []
+    
+    for i in range(outputs):
+        # RESAMPLE
+        resample = cop.createNode("resample")
+        resample.parm("scale").set(resize)
+        resample.setInput(0,file_node,i)
+        resample.moveToGoodPosition(move_inputs=False)
+        
+        # CROP
+        crop = cop.createNode("crop")
+        crop.parm("border").set(1)
+        crop.parm("units").set(2)
+        crop.parm("usemaxres").set(0)
+        crop.parm("xy_pixelx").set(-1)
+        crop.parm("xy_pixely").set(-1)
+        crop.parm("rt_pixelx").set(resx*resize+1)
+        crop.parm("rt_pixely").set(resy*resize+1)
+        crop.setInput(0,resample,0)
+        crop.moveToGoodPosition(move_inputs=False)
+        
+        # WRANGLE
+        wrangle = cop.createNode("wrangle")
+        wrangle.parm("vexsnippet").set(script)
+        wrangle.setInput(0,crop,0)
+        wrangle.moveToGoodPosition(move_inputs=False)
+        
+        # CROP 2
+        crop2 = cop.createNode("crop")
+        crop2.parm("border").set(1)
+        crop2.parm("units").set(1)
+        crop2.parm("usemaxres").set(0)
+        crop2.parm("xy_texturey").set(-0.05)
+        crop2.setNextInput(wrangle)
+        crop2.moveToGoodPosition(move_inputs=False)
+        
+        # WRANGLE 2
+        wrangle2 = cop.createNode("wrangle")
+        wrangle2.parm("vexsnippet").set(script)
+        wrangle2.setInput(0,crop2,0)
+        wrangle2.moveToGoodPosition(move_inputs=False)
+        
+        # FONT
+        font = cop.createNode("font")
+        font.parm("fontsize").set(font_size)
+        font.parm("file").set(font_file)
+        font.parm("text").set(file_node.parm("aov"+str(i+1)).evalAsString())
+        font.setInput(0,layer_node,0)
+        font.moveToGoodPosition(move_inputs=False)
+        
+        # WRANGLE 3
+        wrangle3 = cop.createNode("wrangle")
+        wrangle3.parm("vexsnippet").set(script2)
+        wrangle3.setInput(0,wrangle2,0)
+        wrangle3.parm("aovs").set(2)
+        wrangle3.parm("type2").set(0)
+        wrangle3.parm("layer2").set("font")
+        wrangle3.setInput(1,font,0)
+        wrangle3.moveToGoodPosition(move_inputs=False)
+        
+        # ADDING LAST NODE TO LIST FOR CONTACT SHEET
+        resampled.append(wrangle3)
+        
+    contact_sheet = cop.createNode("contactsheet")
+    contact_sheet.parm("scaleinput").set(0)
+    for resample in resampled:
+        contact_sheet.setNextInput(resample)
+    contact_sheet.moveToGoodPosition(move_inputs=False)
+    
+    # CROP
+    crop = cop.createNode("crop")
+    crop.parm("border").set(1)
+    crop.parm("units").set(1)
+    crop.parm("usemaxres").set(0)
+    crop.parm("xy_texturey").set(-0.2/(2+math.floor((outputs-1)/4)))
+    crop.setNextInput(contact_sheet)
+    crop.moveToGoodPosition(move_inputs=False)
+    
+    # FONT
+    font = cop.createNode("font")
+    font.parm("fontsize").set(font_size)
+    font.parm("file").set(font_file)
+    font.parm("text").set(karma.name()+" - Frame: $F")
+    font.setInput(0,layer_node2,0)
+    font.moveToGoodPosition(move_inputs=False)
+    
+    # WRANGLE 3
+    wrangle3 = cop.createNode("wrangle")
+    wrangle3.parm("vexsnippet").set(script4)
+    wrangle3.setInput(0,crop,0)
+    wrangle3.parm("aovs").set(2)
+    wrangle3.parm("type2").set(0)
+    wrangle3.parm("layer2").set("font")
+    wrangle3.setInput(1,font,0)
+    wrangle3.moveToGoodPosition(move_inputs=False)
+    
+    # WRANGLE
+    wrangle = cop.createNode("wrangle")
+    wrangle.parm("vexsnippet").set(script)
+    wrangle.setInput(0,wrangle3,0)
+    wrangle.moveToGoodPosition(move_inputs=False)
+    
+    # WRANGLE 2
+    wrangle2 = cop.createNode("wrangle")
+    wrangle2.parm("vexsnippet").set(script3)
+    wrangle2.setInput(0,wrangle,0)
+    wrangle2.moveToGoodPosition(move_inputs=False)
+    
+    # MONO
+    mono = cop.createNode("mono")
+    mono.setInput(0,wrangle2,0)
+    mono.moveToGoodPosition(move_inputs=False)
+    
+    # BOUND RECT
+    bound_rect = cop.createNode("boundrect")
+    bound_rect.setInput(0,mono,0)
+    bound_rect.moveToGoodPosition(move_inputs=False)
+    
+    # LAST CROP
+    last_crop = cop.createNode("crop")
+    last_crop.setInput(0,wrangle2,0)
+    last_crop.setInput(2,bound_rect,1)
+    last_crop.parm("usemaxres").set(0)
+    last_crop.parm("mode").set(1)
+    last_crop.moveToGoodPosition(move_inputs=False)
+    """
+    # LOOKING FOR MIN MAX FRAMES
+    pathFolder = os.path.normpath(hou.evalParm(karma.path()+"/picture").rsplit("/",1)[0])
+    listdir = os.listdir(pathFolder)
+    frms = []
+    for file in listdir:
+        if os.path.isfile(pathFolder+"/"+file) and file.startswith(karma.name()) and file.endswith(".exr"):
+            frms.append(int(file.rsplit(".",2)[1]))
+    
+    # ROP
+    rop = cop.createNode("rop_image")
+    rop.parm("trange").set(1)
+    rop.parm("f1").deleteAllKeyframes()
+    rop.parm("f2").deleteAllKeyframes()
+    rop.parm("f1").set(min(frms))
+    rop.parm("f2").set(max(frms))
+    rop.parm("coppath").set(rop.relativePathTo(last_crop))
+    rop.parm("copoutput").set(pathFolder+"/"+karma.name()+"_ContactSheet/"+karma.name()+"_ContactSheet.$F4.jpg")
+    
+    # ROP 2
+    rop2 = cop.createNode("rop_image")
+    rop2.parm("trange").set(1)
+    rop2.parm("f1").deleteAllKeyframes()
+    rop2.parm("f2").deleteAllKeyframes()
+    rop2.parm("f1").set(min(frms))
+    rop2.parm("f2").set(max(frms))
+    rop2.parm("coppath").set(rop.relativePathTo(last_crop2))
+    rop2.parm("copoutput").set(pathFolder+"/"+karma.name()+"_Preview/"+karma.name()+"_Preview.$F4.jpg")
+    continue
+    
+    if do_preview:
+        rop2.parm("execute").pressButton()
+    if do_contactsheet:
+        rop.parm("execute").pressButton()
+        framelist_path = pathFolder+"/"+karma.name()+"_ContactSheet/framelist.txt"
+        framelist = os.open(framelist_path,os.O_RDWR|os.O_CREAT)
+        for fr in frms:
+            os.write(framelist,bytes("file \'"+rop.parm("copoutput").evalAtFrame(fr)+"\'\n", 'utf-8'))
+        os.close(framelist)
+    if do_preview:
+        framelist_path2 = pathFolder+"/"+karma.name()+"_Preview/framelist.txt"
+        framelist2 = os.open(framelist_path2,os.O_RDWR|os.O_CREAT)
+        for fr in frms:
+            os.write(framelist2,bytes("file \'"+rop2.parm("copoutput").evalAtFrame(fr)+"\'\n", 'utf-8'))
+        os.close(framelist2)
+    if do_contactsheet:
+        print(subprocess.run([os.path.realpath(os.environ["HFS"])+"/bin/hffmpeg","-progress","-nostats","-y","-f","concat","-safe","0","-r","25","-i",framelist_path,"-c:v","hevc_nvenc","-b:v","20M","-r","25","-pix_fmt","yuv420p",pathFolder+"/"+karma.name()+"_ContactSheet/"+karma.name()+"_ContactSheet.mp4"],capture_output=True))
+    if do_preview:
+        print(subprocess.run([os.path.realpath(os.environ["HFS"])+"/bin/hffmpeg","-progress","-nostats","-y","-f","concat","-safe","0","-r","25","-i",framelist_path2,"-c:v","hevc_nvenc","-b:v","20M","-r","25","-pix_fmt","yuv420p",pathFolder+"/"+karma.name()+"_Preview/"+karma.name()+"_Preview.mp4"],capture_output=True))
+"""]]></script>
+  </tool>
+</shelfDocument>
