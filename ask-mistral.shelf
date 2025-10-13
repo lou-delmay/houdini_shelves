@@ -8,7 +8,7 @@
   <tool name="ask-mistral" label="Ask Mistral" icon="hicon:/SVGIcons.index?DATATYPES_code_method.svg">
     <script scriptType="python"><![CDATA[import hou
 from PySide2 import QtWidgets
-from PySide2.QtCore import Qt
+from PySide2.QtCore import Qt ,QTimer
 from PySide2.QtCore import QThreadPool, QRunnable, Signal
 import os
 from mistralai import Mistral
@@ -101,9 +101,11 @@ class AskMistral(QtWidgets.QDialog):
         QThreadPool.globalInstance().start(runnable)
 
         
-        
-parent = hou.ui.mainQtWindow()
-dialog = AskMistral(parent)
-dialog.exec_()]]></script>
+def showdialog():
+    parent = hou.ui.mainQtWindow()
+    dialog = AskMistral(parent)
+    dialog.show()
+
+QTimer.singleShot(0, showdialog)]]></script>
   </tool>
 </shelfDocument>
