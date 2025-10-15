@@ -13,10 +13,20 @@ from PySide2.QtCore import QThreadPool, QRunnable, Signal
 import os
 from mistralai import Mistral
 import markdown
+from pygments.formatters import HtmlFormatter
 
 api_key = os.environ["MISTRAL_API_KEY"]
+agent_id = "ag:f101010e:20250929:houdini-agent:9e15111a"
 model = "mistral-small-latest"
 client = Mistral(api_key=api_key)
+
+from pygments.styles import get_all_styles
+styles = get_all_styles()
+print("Available styles:")
+for style in styles:
+    print(style)
+
+css = HtmlFormatter(style='stata-dark').get_style_defs('.codehilite')
 
 class ApiCallRunnable(QRunnable):
     def __init__(self, ask_mistral_instance):
@@ -24,9 +34,25 @@ class ApiCallRunnable(QRunnable):
         self.ask_mistral_instance = ask_mistral_instance
 
     def run(self):
+        response = client.beta.conversations.start(
+            agent_id=agent_id,
+            inputs=self.ask_mistral_instance.messages
+        )
+        self.ask_mistral_instance.messages.append(
+            {
+                "role": "assistant",
+                "content": response.outputs[-1].content,
+            },
+        )
+        self.ask_mistral_instance.update_response_text.emit()
+        """
         stream_response = client.chat.stream(
             model=model,
             messages=self.ask_mistral_instance.messages
+        )
+        stream_response = client.beta.conversations.start(
+            agent_id=agent_id,
+            inputs=self.ask_mistral_instance.messages
         )
         self.ask_mistral_instance.messages.append(
             {
@@ -38,35 +64,37 @@ class ApiCallRunnable(QRunnable):
             content = chunk.data.choices[0].delta.content
             self.ask_mistral_instance.messages[len(self.ask_mistral_instance.messages)-1]["content"] += content
             self.ask_mistral_instance.update_response_text.emit()
+        """
 
 class AskMistral(QtWidgets.QDialog):
     update_response_text = Signal()
     def __init__(self, parent=None):
         super(AskMistral, self).__init__(parent)
         self.setWindowTitle("Ask Mistral")
-        self.setMinimumSize(1000, 300)
-
+        self.setMinimumSize(1200, 1600)
         self.messages = [
             {
-                "role": "system",
-                "content": "What can I do for you today ?",
-            },
+                "role":"assistant",
+                "content":"I am Houdini Agent, can I help you ?"
+            }
         ]
-
+        
         layout = QtWidgets.QVBoxLayout(self)
 
         scroll_area = QtWidgets.QScrollArea(self)
-        scroll_area.setWidgetResizable(True)  # Allow the widget to resize
-        #scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setWidgetResizable(True)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
-        self.response_text = QtWidgets.QLabel()
-        self.response_text.setWordWrap(True)
+        #self.response_text = QtWidgets.QLabel()
+        self.response_text = QtWidgets.QTextBrowser()
+        #self.response_text.setWordWrap(True)
+        self.response_text.setAlignment(Qt.AlignTop)
+        self.response_text.setStyleSheet("padding: 20px;")
         scroll_area.setWidget(self.response_text)
-        layout.addWidget(scroll_area)
+        layout.addWidget(scroll_area,8)
 
         self.text_prompt = QtWidgets.QTextEdit("")
-        layout.addWidget(self.text_prompt)
+        layout.addWidget(self.text_prompt,2)
         
         button = QtWidgets.QPushButton("Send", self)
         button.clicked.connect(self.send_messages)
@@ -80,13 +108,13 @@ class AskMistral(QtWidgets.QDialog):
     def update_response_text_slot(self):
         newtext = "\n"
         for message in self.messages:
-            if message["role"]=="system":
-                newtext+="# System :\n"
+            if message["role"]=="assistant":
+                newtext+="### Houdini Agent :\n"
             else:
-                newtext+="# User :\n"
+                newtext+="### User :\n"
             newtext += message["content"]
             newtext += "\n"
-        html_text = markdown.markdown(newtext)
+        html_text = "<style>"+css+"</style>\n\n"+markdown.markdown(newtext, extensions=['extra','codehilite'])
         self.response_text.setText(html_text)
 
     def send_messages(self):
@@ -96,7 +124,7 @@ class AskMistral(QtWidgets.QDialog):
                 "content": self.text_prompt.document().toPlainText(),
             },
         )
-        # Create and start the runnable
+        self.update_response_text.emit()
         runnable = ApiCallRunnable(self)
         QThreadPool.globalInstance().start(runnable)
 
