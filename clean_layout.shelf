@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <!-- This file contains definitions of shelves, toolbars, and tools.
+ It should not be hand-edited when it is being used by the application.
+ Note, that two definitions of the same element are not allowed in
+ a single file. -->
+
+  <tool name="clean_layout" label="Clean Layout" icon="hicon:/SVGIcons.index?TOOLS_menu.svg">
+    <script scriptType="python"><![CDATA[import time, random
+import hou
+
+nodes = hou.selectedNodes()
+
+minB = nodes[0].position()
+maxB = nodes[0].position()
+for node in nodes:
+    minB[0] = min(minB[0],node.position()[0])
+    minB[1] = min(minB[1],node.position()[1])
+    maxB[0] = max(maxB[0],node.position()[0])
+    maxB[1] = max(maxB[1],node.position()[1])
+centerB = (minB+maxB)/2.0
+
+
+# building layout
+row = []
+layout = []
+for i in range(len(nodes)):
+    row.append(0)
+
+last_layer = []
+for i in range(len(nodes)):
+    if len(nodes[i].inputs())==0:
+        last_layer.append(i)
+        emptylist = []
+
+layout.append(last_layer)
+
+rowcounter = 0
+while len(last_layer)>0:
+    rowcounter += 1
+    newlayer = []
+    for i in range(len(last_layer)):
+        outputs = nodes[last_layer[i]].outputs()
+        for output in outputs:
+            for j in range(len(nodes)):
+                if output == nodes[j]:
+                    if j not in newlayer:
+                        newlayer.append(j)
+    
+    for newlayernode in newlayer:
+        if row[newlayernode] != 0:
+            #for i in range(row[newlayernode],rowcounter-1):
+            #    layout[row[newlayernode]].append(-newlayernode-1)
+            layout[row[newlayernode]].remove(newlayernode)
+        row[newlayernode] = rowcounter
+    
+    if len(newlayer)>0:
+        layout.append(newlayer)
+    last_layer=newlayer
+
+# building connections
+down_connections = []
+for i in range(len(layout)):
+    current_layer = []
+    for j in range(len(layout[i])):
+        current_node_down = []
+        currid = 0
+        if layout[i][j] >= 0:
+            currid = layout[i][j]
+        else:
+            currid = -(layout[i][j]+1)
+
+        outputs = nodes[currid].outputs()
+        for output in outputs:
+            outputid = -1
+            for i in range(len(nodes)):
+                if nodes[i] == output:
+                    outputid = i
+                    break
+            if row[outputid]==i+1:
+                current_node_down.append(layout[i+1].index(outputid))
+            else:
+                layout[i+1].append(-outputid-1)
+                current_node_down.append(len(layout[i+1]))
+        current_layer.append(current_node_down)
+
+
+
+
+
+for j in range(len(layout)):
+    for i in range(len(layout)):
+        for k in range(len(layout[i])-1):
+            
+
+colorbow = hou.Color(1.0,1.0,1.0)
+
+for i in range(len(layout)):
+    for j in range(len(layout[i])):
+        nodes[layout[i][j]].setPosition(hou.Vector2((j*2.0+minB[0], i*-2.0+maxB[1] )))
+    hue = j*10.0
+    colorbow.setHSV((hue,0.8,1.0))
+    nodes[layout[i][j]].setColor(colorbow)
+]]></script>
+  </tool>
+</shelfDocument>
