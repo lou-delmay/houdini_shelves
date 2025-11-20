@@ -9,7 +9,13 @@
     <script scriptType="python"><![CDATA[import time, random
 import hou
 
-nodes = hou.selectedNodes()
+selection = hou.selectedItems()
+nodes = []
+for node in selection:
+    if node.networkItemType() == hou.networkItemType.NetworkDot:
+        node.destroy()
+    if node.networkItemType() == hou.networkItemType.Node:
+        nodes.append(node)
 
 minB = nodes[0].position()
 maxB = nodes[0].position()
@@ -19,7 +25,6 @@ for node in nodes:
     maxB[0] = max(maxB[0],node.position()[0])
     maxB[1] = max(maxB[1],node.position()[1])
 centerB = (minB+maxB)/2.0
-
 
 # building layout
 row = []
@@ -58,49 +63,123 @@ while len(last_layer)>0:
         layout.append(newlayer)
     last_layer=newlayer
 
-# building connections
+# building down connections
 down_connections = []
 for i in range(len(layout)):
     current_layer = []
     for j in range(len(layout[i])):
         current_node_down = []
-        currid = 0
         if layout[i][j] >= 0:
             currid = layout[i][j]
+            outputs = nodes[currid].outputs()
+            for output in outputs:
+                outputid = -1
+                for n in range(len(nodes)):
+                    if nodes[n] == output:
+                        outputid = n
+                        break
+                if outputid == -1:
+                    print("cannot find "+ output.name())
+                    continue
+                if row[outputid]==i+1:
+                    current_node_down.append(layout[i+1].index(outputid))
+                else:
+                    layout[i+1].append(-outputid-1)
+                    current_node_down.append(len(layout[i+1])-1)
         else:
-            currid = -(layout[i][j]+1)
-
-        outputs = nodes[currid].outputs()
-        for output in outputs:
-            outputid = -1
-            for i in range(len(nodes)):
-                if nodes[i] == output:
-                    outputid = i
-                    break
+            outputid = -(layout[i][j]+1)
             if row[outputid]==i+1:
                 current_node_down.append(layout[i+1].index(outputid))
             else:
-                layout[i+1].append(-outputid-1)
-                current_node_down.append(len(layout[i+1]))
+                layout[i+1].append(layout[i][j])
+                current_node_down.append(len(layout[i+1])-1)
         current_layer.append(current_node_down)
+    down_connections.append(current_layer)
 
 
+# building up connections from down
+up_connections = []
+for i in range(len(down_connections)):
+    rowlist = []
+    for j in range(len(down_connections[i])):
+        emptylist = []
+        rowlist.append(emptylist)
+    up_connections.append(rowlist)
 
+for i in range(len(down_connections)):
+    for j in range(len(down_connections[i])):
+        for k in range(len(down_connections[i][j])):
+            up_connections[i+1][down_connections[i][j][k]].append(j)
 
-
-for j in range(len(layout)):
+# rearenging  graph
+for k in range(len(layout)):
     for i in range(len(layout)):
-        for k in range(len(layout[i])-1):
+        for j in range(len(layout[i])-1):
+            current_cost = 0.0
+            swap_cost = 0.0
+
+            current_l = (float)(len(layout[i]))
+            up_l = 0.0
+            if i != 0:
+                up_l = (float)(len(layout[i-1]))
+            down_l = 0.0
+            if i != len(layout)-1:
+                down_l = (float)(len(layout[i+1]))
+
+            for up in up_connections[i][j]:
+                current_cost += pow(abs(j-up),2.0)
+                swap_cost += pow(abs(j+1-up),2.0)
+                
+            for up in up_connections[i][j+1]:
+                current_cost += pow(abs(j+1-up),2.0)
+                swap_cost += pow(abs(j-up),2.0)
             
+            for down in down_connections[i][j]:
+                current_cost += pow(abs(j-down),2.0)
+                swap_cost += pow(abs(j+1-down),2.0)
+                
+            for down in down_connections[i][j+1]:
+                current_cost += pow(abs(j+1-down),2.0)
+                swap_cost += pow(abs(j-down),2.0)
+            
+            if swap_cost < current_cost:
+                if i != 0:
+                    for up in up_connections[i][j]:
+                        down_connections[i-1][up][down_connections[i-1][up].index(j)] = j+1
+                    for up in up_connections[i][j+1]:
+                        down_connections[i-1][up][down_connections[i-1][up].index(j+1)] = j
+                if i != len(layout)-1:
+                    for down in down_connections[i][j]:
+                        up_connections[i+1][down][up_connections[i+1][down].index(j)] = j+1
+                    for down in down_connections[i][j+1]:
+                        up_connections[i+1][down][up_connections[i+1][down].index(j+1)] = j
+                
+                layout[i][j], layout[i][j+1] = layout[i][j+1], layout[i][j]
+                down_connections[i][j], down_connections[i][j+1] = down_connections[i][j+1], down_connections[i][j]
+                up_connections[i][j], up_connections[i][j+1] = up_connections[i][j+1], up_connections[i][j]
 
 colorbow = hou.Color(1.0,1.0,1.0)
 
 for i in range(len(layout)):
+    linel = (float)(len(layout[i]))
     for j in range(len(layout[i])):
-        nodes[layout[i][j]].setPosition(hou.Vector2((j*2.0+minB[0], i*-2.0+maxB[1] )))
-    hue = j*10.0
-    colorbow.setHSV((hue,0.8,1.0))
-    nodes[layout[i][j]].setColor(colorbow)
+        if layout[i][j]>=0:
+            nodes[layout[i][j]].setPosition(hou.Vector2(((j-linel*0.5)*2.0+centerB[0], i*-1.5+maxB[1] )))
+            for k in range(len(up_connections[i][j])):
+                if layout[i-1][up_connections[i][j][k]] < 0:
+                    connections = nodes[layout[i][j]].inputConnections()
+                    for z in range(len(connections)):
+                        if connections[z].inputNode() == nodes[-layout[i-1][up_connections[i][j][k]]-1] and connections[z].outputNode() == nodes[layout[i][j]]:
+                            dot2pos = hou.Vector2(((up_connections[i][j][k]-(float)(len(layout[i-1]))*0.5)*2.0+centerB[0], (i-1)*-1.5+maxB[1] ))
+                            dot1 = hou.createNetworkDot()
+                            dot2 = hou.createNetworkDot()
+                            dot1.setInput(0,connections[z].inputNode(),output_index=connections[z].outputIndex())
+                            dot2.setInput(0,dot1)
+                            connections[z].outputNode().setInput(connections[z].inputIndex(),dot2)
+                            
+            hue = j*10.0
+            colorbow.setHSV((hue,0.8,1.0))
+            nodes[layout[i][j]].setColor(colorbow)
 ]]></script>
   </tool>
 </shelfDocument>
