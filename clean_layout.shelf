@@ -8,6 +8,7 @@
   <tool name="clean_layout" label="Clean Layout" icon="hicon:/SVGIcons.index?TOOLS_menu.svg">
     <script scriptType="python"><![CDATA[import time, random
 import hou
+import math
 
 selection = hou.selectedItems()
 nodes = []
@@ -26,6 +27,7 @@ for node in nodes:
     maxB[0] = max(maxB[0],node.position()[0])
     maxB[1] = max(maxB[1],node.position()[1])
 centerB = (minB+maxB)/2.0
+
 # building layout
 row = []
 layout = []
@@ -65,6 +67,59 @@ while len(last_layer)>0:
     if len(newlayer)>0:
         layout.append(newlayer)
     last_layer=newlayer
+
+#bidirectional graph layout
+last_layer = []
+for i in range(len(nodes)):
+    node_outputs = 0
+    for outp in nodes[i].outputs():
+        if outp in nodes:
+            node_outputs+=1
+            break
+    if node_outputs==0:
+        last_layer.append(i)
+        emptylist = []
+
+
+for i in range(math.floor(len(layout)/2)):
+    for j in range(len(last_layer)):
+        layout[row[last_layer[j]]].remove(last_layer[j])
+        row[last_layer[j]]=len(layout)-i-1
+        layout[len(layout)-i-1].append(last_layer[j])
+    
+    newlayer = []
+    for j in range(len(last_layer)):
+        inputs = nodes[last_layer[j]].inputs()
+        for inputn in inputs:
+            for k in range(len(nodes)):
+                if inputn == nodes[k]:
+                    if k not in newlayer and row[k]>i:
+                        under = 0
+                        outputinputs = nodes[k].outputs()
+                        for outputinput in outputinputs:
+                            for u in range(len(nodes)):
+                                if outputinput == nodes[u]:
+                                    if row[u]<len(layout)-i-2:
+                                        under=1
+                                    break
+                        if under==0:
+                            newlayer.append(k)
+                    else:
+                        break
+    last_layer = []
+    for j in range(len(newlayer)):
+        remove = 0
+        outputs = nodes[newlayer[j]].outputs()
+        for outout in outputs:
+            for k in range(len(nodes)):
+                if outout == nodes[k]:
+                    if k in newlayer:
+                        remove = 1
+                    break
+        if remove==0:
+            last_layer.append(newlayer[j])
+
+    #last_layer = newlayer
 
 # building down connections
 down_connections = []
@@ -154,7 +209,7 @@ for i in range(len(layout)):
     down_connections[i]=newdownline
 
 # rearenging  graph
-for k in range(len(layout)*len(layout)):
+for k in range(len(layout)*4):
     for i in range(len(layout)):
         for j in range(len(layout[i])-1):
             current_cost = 0.0
@@ -168,7 +223,7 @@ for k in range(len(layout)*len(layout)):
             if i!=0:
                 uplen= (float)(len(layout[i-1]))*0.5
             
-            if random.random()<0.5:
+            if random.random()<0.5 or k>len(layout)*2:
                 for down in down_connections[i][j]:
                     current_cost += pow(abs((j-ilen)-(down-downlen)),2.0)
                     swap_cost += pow(abs((j+1-ilen)-(down-downlen)),2.0)
@@ -189,17 +244,17 @@ for k in range(len(layout)*len(layout)):
             for downL in down_connections[i][j]:
                 for downR in down_connections[i][j+1]:
                     if downR-downL<0:
-                        current_cost += 2.0
+                        current_cost += 64.0
                     if (downR-downL)*-1.0<0:
-                        swap_cost += 2.0
+                        swap_cost += 64.0
 
             
             for upL in up_connections[i][j]:
                 for upR in up_connections[i][j+1]:
                     if upR-upL<0:
-                        current_cost += 2.0
+                        current_cost += 64.0
                     if (upR-upL)*-1.0<0:
-                        swap_cost += 2.0
+                        swap_cost += 64.0
             
             if swap_cost < current_cost:
                 if i != 0:
@@ -229,7 +284,6 @@ for i in range(len(layout)):
             bboxmin = min(bboxmin,j+0.5- (float)(len(layout[i]))*0.5)
 
 center_offset = (bboxmin+bboxmax)/2.0
-
 
 for i in range(len(layout)):
     linel = (float)(len(layout[i]))
