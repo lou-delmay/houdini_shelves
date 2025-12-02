@@ -11,10 +11,10 @@ import os
 import subprocess
 import math
 
-from PySide2.QtWidgets import QDialog, QFrame, QFontDialog , QVBoxLayout, QCheckBox, QScrollArea, QWidget, QHBoxLayout, QPushButton, QApplication, QTableWidgetItem, QTableWidget, QLabel
-from PySide2.QtCore import Qt, QTimer
-from PySide2.QtCore import QThreadPool, QRunnable, Signal
-from PySide2.QtGui import QFont
+from PySide6.QtWidgets import QDialog, QFrame, QFontDialog , QVBoxLayout, QCheckBox, QScrollArea, QWidget, QHBoxLayout, QPushButton, QApplication, QTableWidgetItem, QTableWidget, QLabel
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QThreadPool, QRunnable, Signal
+from PySide6.QtGui import QFont
 
 class ContactSheetDialog(QDialog):
     def __init__(self, parent=None):

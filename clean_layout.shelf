@@ -6,334 +6,375 @@
  a single file. -->
 
   <tool name="clean_layout" label="Clean Layout" icon="hicon:/SVGIcons.index?TOOLS_menu.svg">
-    <script scriptType="python"><![CDATA[import time, random
-import hou
+    <script scriptType="python"><![CDATA[import hou
+import os
+import subprocess
 import math
+import time
+import random
 
-selection = hou.selectedItems()
-nodes = []
-for node in selection:
-    if node.networkItemType() == hou.networkItemType.NetworkDot:
-        node.destroy()
-    if node.networkItemType() == hou.networkItemType.Node:
-        nodes.append(node)
+from PySide6.QtWidgets import QDialog, QFrame, QFontDialog , QVBoxLayout, QCheckBox, QScrollArea, QWidget, QHBoxLayout, QPushButton, QApplication, QTableWidgetItem, QTableWidget, QLabel
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QThreadPool, QRunnable, Signal
+from PySide6.QtGui import QFont
 
+class LayoutDialog(QDialog):
+    def __init__(self, parent=None):
+        super(LayoutDialog, self).__init__(parent)
+        self.setWindowTitle("Layout Nodes")
+        self.setFixedSize(300, 180)
 
-minB = nodes[0].position()
-maxB = nodes[0].position()
-for node in nodes:
-    minB[0] = min(minB[0],node.position()[0])
-    minB[1] = min(minB[1],node.position()[1])
-    maxB[0] = max(maxB[0],node.position()[0])
-    maxB[1] = max(maxB[1],node.position()[1])
-centerB = (minB+maxB)/2.0
+        self.main_layout = QVBoxLayout(self)
 
-# building layout
-row = []
-layout = []
-for i in range(len(nodes)):
-    row.append(0)
+        self.even_line_length_checkbox = QCheckBox("Even Line Length", self)
+        self.even_line_length_checkbox.setChecked(True)
+        self.insert_dummy_nodes_checkbox = QCheckBox("Insert Dummy Nodes", self)
+        self.insert_dummy_nodes_checkbox.setChecked(True)
+        self.equalize_checkbox = QCheckBox("Equalize Lines", self)
+        self.equalize_checkbox.setChecked(False)
+        self.bidir_checkbox = QCheckBox("Bidirectional Building", self)
+        self.bidir_checkbox.setChecked(True)
+        self.main_layout.addWidget(self.even_line_length_checkbox)
+        self.main_layout.addWidget(self.insert_dummy_nodes_checkbox)
+        self.main_layout.addWidget(self.equalize_checkbox)
+        self.main_layout.addWidget(self.bidir_checkbox)
+        
+        # Add Render and Cancel buttons
+        self.update_button = QPushButton("Layout Nodes", self)
+        self.update_button.clicked.connect(self.layoutnodes)
+        self.main_layout.addWidget(self.update_button)
 
-last_layer = []
-for i in range(len(nodes)):
-    node_inputs = 0
-    for inp in nodes[i].inputs():
-        if inp in nodes:
-            node_inputs+=1
-            break
-    if node_inputs==0:
-        last_layer.append(i)
-        emptylist = []
-
-layout.append(last_layer)
-
-rowcounter = 0
-while len(last_layer)>0:
-    rowcounter += 1
-    newlayer = []
-    for i in range(len(last_layer)):
-        outputs = nodes[last_layer[i]].outputs()
-        for output in outputs:
-            for j in range(len(nodes)):
-                if output == nodes[j]:
-                    if j not in newlayer:
-                        newlayer.append(j)
-    
-    for newlayernode in newlayer:
-        if row[newlayernode] != 0:
-            layout[row[newlayernode]].remove(newlayernode)
-        row[newlayernode] = rowcounter
-    
-    if len(newlayer)>0:
-        layout.append(newlayer)
-    last_layer=newlayer
-
-#bidirectional graph layout
-last_layer = []
-for i in range(len(nodes)):
-    node_outputs = 0
-    for outp in nodes[i].outputs():
-        if outp in nodes:
-            node_outputs+=1
-            break
-    if node_outputs==0:
-        last_layer.append(i)
-        emptylist = []
+    def layoutnodes(self):
+        selection = hou.selectedItems()
+        nodes = []
+        for node in selection:
+            if node.networkItemType() == hou.networkItemType.NetworkDot:
+                node.destroy()
+            if node.networkItemType() == hou.networkItemType.Node:
+                nodes.append(node)
 
 
-for i in range(math.floor(len(layout)/2)):
-    for j in range(len(last_layer)):
-        layout[row[last_layer[j]]].remove(last_layer[j])
-        row[last_layer[j]]=len(layout)-i-1
-        layout[len(layout)-i-1].append(last_layer[j])
-    
-    newlayer = []
-    for j in range(len(last_layer)):
-        inputs = nodes[last_layer[j]].inputs()
-        for inputn in inputs:
-            for k in range(len(nodes)):
-                if inputn == nodes[k]:
-                    if k not in newlayer and row[k]>i:
-                        under = 0
-                        outputinputs = nodes[k].outputs()
-                        for outputinput in outputinputs:
-                            for u in range(len(nodes)):
-                                if outputinput == nodes[u]:
-                                    if row[u]<len(layout)-i-2:
-                                        under=1
-                                    break
-                        if under==0:
-                            newlayer.append(k)
-                    else:
-                        break
-    last_layer = []
-    for j in range(len(newlayer)):
-        remove = 0
-        outputs = nodes[newlayer[j]].outputs()
-        for outout in outputs:
-            for k in range(len(nodes)):
-                if outout == nodes[k]:
-                    if k in newlayer:
-                        remove = 1
+        minB = nodes[0].position()
+        maxB = nodes[0].position()
+        for node in nodes:
+            minB[0] = min(minB[0],node.position()[0])
+            minB[1] = min(minB[1],node.position()[1])
+            maxB[0] = max(maxB[0],node.position()[0])
+            maxB[1] = max(maxB[1],node.position()[1])
+        centerB = (minB+maxB)/2.0
+
+        # building layout
+        row = []
+        layout = []
+        for i in range(len(nodes)):
+            row.append(0)
+
+        last_layer = []
+        for i in range(len(nodes)):
+            node_inputs = 0
+            for inp in nodes[i].inputs():
+                if inp in nodes:
+                    node_inputs+=1
                     break
-        if remove==0:
-            last_layer.append(newlayer[j])
+            if node_inputs==0:
+                last_layer.append(i)
+                emptylist = []
 
-    #last_layer = newlayer
+        layout.append(last_layer)
 
-# building down connections
-down_connections = []
-for i in range(len(layout)):
-    current_layer = []
-    for j in range(len(layout[i])):
-        current_node_down = []
-        if layout[i][j] >= 0:
-            currid = layout[i][j]
-            outputs = nodes[currid].outputs()
-            for output in outputs:
-                outputid = -1
-                for n in range(len(nodes)):
-                    if nodes[n] == output:
-                        outputid = n
+        rowcounter = 0
+        while len(last_layer)>0:
+            rowcounter += 1
+            newlayer = []
+            for i in range(len(last_layer)):
+                outputs = nodes[last_layer[i]].outputs()
+                for output in outputs:
+                    for j in range(len(nodes)):
+                        if output == nodes[j]:
+                            if j not in newlayer:
+                                newlayer.append(j)
+            
+            for newlayernode in newlayer:
+                if row[newlayernode] != 0:
+                    layout[row[newlayernode]].remove(newlayernode)
+                row[newlayernode] = rowcounter
+            
+            if len(newlayer)>0:
+                layout.append(newlayer)
+            last_layer=newlayer
+
+        #bidirectional graph layout
+        if self.bidir_checkbox.isChecked():
+            last_layer = []
+            for i in range(len(nodes)):
+                node_outputs = 0
+                for outp in nodes[i].outputs():
+                    if outp in nodes:
+                        node_outputs+=1
                         break
-                if outputid == -1:
-                    continue
-                if row[outputid]==i+1:
-                    current_node_down.append(layout[i+1].index(outputid))
+                if node_outputs==0:
+                    last_layer.append(i)
+                    emptylist = []
+
+        for i in range(math.floor(len(layout)/2)):
+            for j in range(len(last_layer)):
+                layout[row[last_layer[j]]].remove(last_layer[j])
+                row[last_layer[j]]=len(layout)-i-1
+                layout[len(layout)-i-1].append(last_layer[j])
+            
+            newlayer = []
+            for j in range(len(last_layer)):
+                inputs = nodes[last_layer[j]].inputs()
+                for inputn in inputs:
+                    for k in range(len(nodes)):
+                        if inputn == nodes[k]:
+                            if k not in newlayer and row[k]>i:
+                                under = 0
+                                outputinputs = nodes[k].outputs()
+                                for outputinput in outputinputs:
+                                    for u in range(len(nodes)):
+                                        if outputinput == nodes[u]:
+                                            if row[u]<len(layout)-i-2:
+                                                under=1
+                                            break
+                                if under==0:
+                                    newlayer.append(k)
+                            else:
+                                break
+            last_layer = []
+            for j in range(len(newlayer)):
+                remove = 0
+                outputs = nodes[newlayer[j]].outputs()
+                for outout in outputs:
+                    for k in range(len(nodes)):
+                        if outout == nodes[k]:
+                            if k in newlayer:
+                                remove = 1
+                            break
+                if remove==0:
+                    last_layer.append(newlayer[j])
+
+            #last_layer = newlayer
+
+        # building down connections
+        down_connections = []
+        for i in range(len(layout)):
+            current_layer = []
+            for j in range(len(layout[i])):
+                current_node_down = []
+                if layout[i][j] >= 0:
+                    currid = layout[i][j]
+                    outputs = nodes[currid].outputs()
+                    for output in outputs:
+                        outputid = -1
+                        for n in range(len(nodes)):
+                            if nodes[n] == output:
+                                outputid = n
+                                break
+                        if outputid == -1:
+                            continue
+                        if row[outputid]==i+1:
+                            current_node_down.append(layout[i+1].index(outputid))
+                        else:
+                            layout[i+1].append(-outputid-1)
+                            current_node_down.append(len(layout[i+1])-1)
                 else:
-                    layout[i+1].append(-outputid-1)
-                    current_node_down.append(len(layout[i+1])-1)
-        else:
-            outputid = -(layout[i][j]+1)
-            if row[outputid]==i+1:
-                current_node_down.append(layout[i+1].index(outputid))
-            else:
-                layout[i+1].append(layout[i][j])
-                current_node_down.append(len(layout[i+1])-1)
-        current_layer.append(current_node_down)
-    down_connections.append(current_layer)
+                    outputid = -(layout[i][j]+1)
+                    if row[outputid]==i+1:
+                        current_node_down.append(layout[i+1].index(outputid))
+                    else:
+                        layout[i+1].append(layout[i][j])
+                        current_node_down.append(len(layout[i+1])-1)
+                current_layer.append(current_node_down)
+            down_connections.append(current_layer)
 
 
-# building up connections from down
-up_connections = []
-for i in range(len(down_connections)):
-    rowlist = []
-    for j in range(len(down_connections[i])):
-        emptylist = []
-        rowlist.append(emptylist)
-    up_connections.append(rowlist)
+        # building up connections from down
+        up_connections = []
+        for i in range(len(down_connections)):
+            rowlist = []
+            for j in range(len(down_connections[i])):
+                emptylist = []
+                rowlist.append(emptylist)
+            up_connections.append(rowlist)
 
-for i in range(len(down_connections)):
-    for j in range(len(down_connections[i])):
-        for k in range(len(down_connections[i][j])):
-            up_connections[i+1][down_connections[i][j][k]].append(j)
-
-"""
-# no odd lines
-for i in range(len(layout)):
-    if len(layout[i])%2==1:
-        emptylist = []
-        layout[i].append(-999)
-        down_connections[i].append(emptylist)
-        up_connections[i].append(emptylist)
-"""
-#line equalization
-maxdim = 0
-for l in layout:
-    maxdim = max(maxdim,len(l))
-for i in range(len(layout)):
-    for j in range(len(layout[i]),maxdim):
-        emptylist = []
-        layout[i].append(-999)
-        down_connections[i].append(emptylist)
-        up_connections[i].append(emptylist)
+        for i in range(len(down_connections)):
+            for j in range(len(down_connections[i])):
+                for k in range(len(down_connections[i][j])):
+                    up_connections[i+1][down_connections[i][j][k]].append(j)
 
 
-# inserting dummy nodes
-for i in range(len(layout)):
-    newlayoutline=[]
-    newdownline=[]
-    newupline=[]
-    for j in range(len(layout[i])):
-        emptylist = []
-        for k in range(len(down_connections[i][j])):
-            down_connections[i][j][k]*=4
-        for k in range(len(up_connections[i][j])):
-            up_connections[i][j][k]*=4
-        newlayoutline.append(layout[i][j])
-        newdownline.append(down_connections[i][j])
-        newupline.append(up_connections[i][j])
-        newlayoutline.append(-999)
-        newlayoutline.append(-999)
-        newlayoutline.append(-999)
-        newdownline.append(emptylist)
-        newdownline.append(emptylist)
-        newdownline.append(emptylist)
-        newupline.append(emptylist)
-        newupline.append(emptylist)
-        newupline.append(emptylist)
-    layout[i]=newlayoutline
-    up_connections[i]=newupline
-    down_connections[i]=newdownline
+        # no odd lines
+        if self.even_line_length_checkbox.isChecked():
+            for i in range(len(layout)):
+                if len(layout[i])%2==1:
+                    emptylist = []
+                    layout[i].append(-999)
+                    down_connections[i].append(emptylist)
+                    up_connections[i].append(emptylist)
 
-# rearenging  graph
-for k in range(len(layout)*len(layout)*4):
-    for i in range(len(layout)):
-        for j in range(len(layout[i])-1):
-            current_cost = 0.0
-            swap_cost = 0.0
+        
+        #line equalization
+        if self.equalize_checkbox.isChecked():
+            maxdim = 0
+            for l in layout:
+                maxdim = max(maxdim,len(l))
+            for i in range(len(layout)):
+                for j in range(len(layout[i]),maxdim):
+                    emptylist = []
+                    layout[i].append(-999)
+                    down_connections[i].append(emptylist)
+                    up_connections[i].append(emptylist)
+        
+        if self.insert_dummy_nodes_checkbox.isChecked():
+            # inserting dummy nodes
+            for i in range(len(layout)):
+                newlayoutline=[]
+                newdownline=[]
+                newupline=[]
+                for j in range(len(layout[i])):
+                    emptylist = []
+                    for k in range(len(down_connections[i][j])):
+                        down_connections[i][j][k]*=2
+                    for k in range(len(up_connections[i][j])):
+                        up_connections[i][j][k]*=2
+                    newlayoutline.append(layout[i][j])
+                    newdownline.append(down_connections[i][j])
+                    newupline.append(up_connections[i][j])
+                    newlayoutline.append(-999)
+                    newdownline.append(emptylist)
+                    newupline.append(emptylist)
+                layout[i]=newlayoutline
+                up_connections[i]=newupline
+                down_connections[i]=newdownline
 
-            ilen = (float)(len(layout[i]))*0.5
-            downlen = 0
-            if i!=len(layout)-1:
-                downlen = (float)(len(layout[i+1]))*0.5
-            uplen = 0
-            if i!=0:
-                uplen= (float)(len(layout[i-1]))*0.5
-            
-            if random.random()<0.5 or k>len(layout)*len(layout)*3:
-                for down in down_connections[i][j]:
-                    current_cost += pow(abs((j-ilen)-(down-downlen)),2.0)
-                    swap_cost += pow(abs((j+1-ilen)-(down-downlen)),2.0)
+        # rearenging  graph
+        for k in range(len(layout)*len(layout)*4):
+            for i in range(len(layout)):
+                for j in range(len(layout[i])-1):
+                    current_cost = 0.0
+                    swap_cost = 0.0
+
+                    ilen = (float)(len(layout[i]))*0.5
+                    downlen = 0
+                    if i!=len(layout)-1:
+                        downlen = (float)(len(layout[i+1]))*0.5
+                    uplen = 0
+                    if i!=0:
+                        uplen= (float)(len(layout[i-1]))*0.5
                     
-                for down in down_connections[i][j+1]:
-                    current_cost += pow(abs((j+1-ilen)-(down-downlen)),2.0)
-                    swap_cost += pow(abs((j-ilen)-(down-downlen)),2.0)
-            else:
-                for up in up_connections[i][j]:
-                    current_cost += pow(abs((j-ilen)-(up-uplen)),2.0)
-                    swap_cost += pow(abs((j+1-ilen)-(up-uplen)),2.0)
-                    
-                for up in up_connections[i][j+1]:
-                    current_cost += pow(abs((j+1-ilen)-(up-uplen)),2.0)
-                    swap_cost += pow(abs((j-ilen)-(up-uplen)),2.0)
-            
-            #crossings
-            for downL in down_connections[i][j]:
-                for downR in down_connections[i][j+1]:
-                    if downR-downL<0:
-                        current_cost += 16.0
-                    if (downR-downL)*-1.0<0:
-                        swap_cost += 16.0
-
-            
-            for upL in up_connections[i][j]:
-                for upR in up_connections[i][j+1]:
-                    if upR-upL<0:
-                        current_cost += 16.0
-                    if (upR-upL)*-1.0<0:
-                        swap_cost += 16.0
-            
-            if swap_cost < current_cost:
-                if i != 0:
-                    for up in up_connections[i][j]:
-                        down_connections[i-1][up][down_connections[i-1][up].index(j)] = j+1
-                    for up in up_connections[i][j+1]:
-                        down_connections[i-1][up][down_connections[i-1][up].index(j+1)] = j
-                if i != len(layout)-1:
-                    for down in down_connections[i][j]:
-                        up_connections[i+1][down][up_connections[i+1][down].index(j)] = j+1
-                    for down in down_connections[i][j+1]:
-                        up_connections[i+1][down][up_connections[i+1][down].index(j+1)] = j
-                
-                layout[i][j], layout[i][j+1] = layout[i][j+1], layout[i][j]
-                down_connections[i][j], down_connections[i][j+1] = down_connections[i][j+1], down_connections[i][j]
-                up_connections[i][j], up_connections[i][j+1] = up_connections[i][j+1], up_connections[i][j]
-
-colorbow = hou.Color(1.0,1.0,1.0)
-
-bboxmax = -100000.0
-bboxmin = 100000.0
-sum = 0
-for i in range(len(layout)):
-    for j in range(len(layout[i])):
-        if layout[i][j]>=0:
-            bboxmax = max(bboxmax,j+0.5- (float)(len(layout[i]))*0.5)
-            bboxmin = min(bboxmin,j+0.5- (float)(len(layout[i]))*0.5)
-
-center_offset = (bboxmin+bboxmax)/2.0
-
-for i in range(len(layout)):
-    linel = (float)(len(layout[i]))
-    for j in range(len(layout[i])):
-        if layout[i][j]>=0:
-            nodes[layout[i][j]].setPosition(hou.Vector2(((j+0.5-center_offset-linel*0.5)*2.0+centerB[0], i*-2.0+maxB[1] )))
-            for k in range(len(down_connections[i][j])):
-                if layout[i+1][down_connections[i][j][k]] < 0:
-                    connections = nodes[layout[i][j]].outputConnections()
-                    for z in range(len(connections)):
-                        if connections[z].outputNode() == nodes[-layout[i+1][down_connections[i][j][k]]-1] and connections[z].inputNode() == nodes[layout[i][j]]:
+                    if random.random()<0.5 or k>len(layout)*len(layout)*3:
+                        for down in down_connections[i][j]:
+                            current_cost += pow(abs((j-ilen)-(down-downlen)),2.0)
+                            swap_cost += pow(abs((j+1-ilen)-(down-downlen)),2.0)
                             
-                            last_node = connections[z].inputNode()
-                            parent = connections[z].outputNode().parent()
-                            curlayer = i+1
-                            curnode = down_connections[i][j][k]
-                            last_position = hou.Vector2(((j+0.5-center_offset-linel*0.5)*2.0+centerB[0]+0.5, i*-2.0+maxB[1]+0.15 ))
-                            while(True):
-                                next_position = hou.Vector2(((down_connections[curlayer][curnode][0]+0.5-center_offset-(float)(len(layout[curlayer+1]))*0.5)*2.0+centerB[0]+0.5, (curlayer+1)*-2.0+maxB[1]+0.15 ))
-                                dotpos = hou.Vector2(((curnode+0.5-center_offset-(float)(len(layout[curlayer]))*0.5)*2.0+centerB[0]+0.5, (curlayer)*-2.0+maxB[1]+0.15 ))
+                        for down in down_connections[i][j+1]:
+                            current_cost += pow(abs((j+1-ilen)-(down-downlen)),2.0)
+                            swap_cost += pow(abs((j-ilen)-(down-downlen)),2.0)
+                    else:
+                        for up in up_connections[i][j]:
+                            current_cost += pow(abs((j-ilen)-(up-uplen)),2.0)
+                            swap_cost += pow(abs((j+1-ilen)-(up-uplen)),2.0)
+                            
+                        for up in up_connections[i][j+1]:
+                            current_cost += pow(abs((j+1-ilen)-(up-uplen)),2.0)
+                            swap_cost += pow(abs((j-ilen)-(up-uplen)),2.0)
+                    
+                    #crossings
+                    for downL in down_connections[i][j]:
+                        for downR in down_connections[i][j+1]:
+                            if downR-downL<0:
+                                current_cost += 16.0
+                            if (downR-downL)*-1.0<0:
+                                swap_cost += 16.0
 
-                                if hou.Vector2.length(hou.Vector2.normalized(next_position-dotpos)-hou.Vector2.normalized(dotpos-last_position))<0.1:
-                                    if layout[curlayer+1][down_connections[curlayer][curnode][0]]]]><![CDATA[>=0:
-                                        break
-                                    else:
+                    
+                    for upL in up_connections[i][j]:
+                        for upR in up_connections[i][j+1]:
+                            if upR-upL<0:
+                                current_cost += 16.0
+                            if (upR-upL)*-1.0<0:
+                                swap_cost += 16.0
+                    
+                    if swap_cost < current_cost:
+                        if i != 0:
+                            for up in up_connections[i][j]:
+                                down_connections[i-1][up][down_connections[i-1][up].index(j)] = j+1
+                            for up in up_connections[i][j+1]:
+                                down_connections[i-1][up][down_connections[i-1][up].index(j+1)] = j
+                        if i != len(layout)-1:
+                            for down in down_connections[i][j]:
+                                up_connections[i+1][down][up_connections[i+1][down].index(j)] = j+1
+                            for down in down_connections[i][j+1]:
+                                up_connections[i+1][down][up_connections[i+1][down].index(j+1)] = j
+                        
+                        layout[i][j], layout[i][j+1] = layout[i][j+1], layout[i][j]
+                        down_connections[i][j], down_connections[i][j+1] = down_connections[i][j+1], down_connections[i][j]
+                        up_connections[i][j], up_connections[i][j+1] = up_connections[i][j+1], up_connections[i][j]
+
+        colorbow = hou.Color(1.0,1.0,1.0)
+
+        bboxmax = -100000.0
+        bboxmin = 100000.0
+        sum = 0
+        for i in range(len(layout)):
+            for j in range(len(layout[i])):
+                if layout[i][j]>=0:
+                    bboxmax = max(bboxmax,j+0.5- (float)(len(layout[i]))*0.5)
+                    bboxmin = min(bboxmin,j+0.5- (float)(len(layout[i]))*0.5)
+
+        center_offset = (bboxmin+bboxmax)/2.0
+
+        for i in range(len(layout)):
+            linel = (float)(len(layout[i]))
+            for j in range(len(layout[i])):
+                if layout[i][j]>=0:
+                    nodes[layout[i][j]].setPosition(hou.Vector2(((j+0.5-center_offset-linel*0.5)*2.0+centerB[0], i*-2.0+maxB[1] )))
+                    for k in range(len(down_connections[i][j])):
+                        if layout[i+1][down_connections[i][j][k]] < 0:
+                            connections = nodes[layout[i][j]].outputConnections()
+                            for z in range(len(connections)):
+                                if connections[z].outputNode() == nodes[-layout[i+1][down_connections[i][j][k]]-1] and connections[z].inputNode() == nodes[layout[i][j]]:
+                                    
+                                    last_node = connections[z].inputNode()
+                                    parent = connections[z].outputNode().parent()
+                                    curlayer = i+1
+                                    curnode = down_connections[i][j][k]
+                                    last_position = hou.Vector2(((j+0.5-center_offset-linel*0.5)*2.0+centerB[0]+0.5, i*-2.0+maxB[1]+0.15 ))
+                                    while(True):
+                                        next_position = hou.Vector2(((down_connections[curlayer][curnode][0]+0.5-center_offset-(float)(len(layout[curlayer+1]))*0.5)*2.0+centerB[0]+0.5, (curlayer+1)*-2.0+maxB[1]+0.15 ))
+                                        dotpos = hou.Vector2(((curnode+0.5-center_offset-(float)(len(layout[curlayer]))*0.5)*2.0+centerB[0]+0.5, (curlayer)*-2.0+maxB[1]+0.15 ))
+
+                                        if hou.Vector2.length(hou.Vector2.normalized(next_position-dotpos)-hou.Vector2.normalized(dotpos-last_position))<0.1:
+                                            if layout[curlayer+1][down_connections[curlayer][curnode][0]]]]><![CDATA[>=0:
+                                                break
+                                            else:
+                                                curnode = down_connections[curlayer][curnode][0]
+                                                curlayer+=1
+                                            continue
+                                        dot = parent.createNetworkDot()
+                                        if last_node.networkItemType() == hou.networkItemType.Node:
+                                            dot.setInput(last_node,connections[z].outputIndex())
+                                        else:
+                                            dot.setInput(last_node)
+                                        connections[z].outputNode().setInput(connections[z].inputIndex(),dot)
+                                        dot.setSelected(True)
+
+                                        dot.setPosition(dotpos)
+                                        last_position = dotpos
                                         curnode = down_connections[curlayer][curnode][0]
                                         curlayer+=1
-                                    continue
-                                dot = parent.createNetworkDot()
-                                if last_node.networkItemType() == hou.networkItemType.Node:
-                                    dot.setInput(last_node,connections[z].outputIndex())
-                                else:
-                                    dot.setInput(last_node)
-                                connections[z].outputNode().setInput(connections[z].inputIndex(),dot)
-                                dot.setSelected(True)
+                                        last_node = dot
+                                        if layout[curlayer][curnode]>=0:
+                                            break
 
-                                dot.setPosition(dotpos)
-                                last_position = dotpos
-                                curnode = down_connections[curlayer][curnode][0]
-                                curlayer+=1
-                                last_node = dot
-                                if layout[curlayer][curnode]>=0:
-                                    break]]></script>
+
+def showdialog():
+    main_window = hou.qt.mainWindow()
+    dialog = LayoutDialog(main_window)
+    dialog.show()
+
+QTimer.singleShot(0, showdialog)
+]]></script>
   </tool>
 </shelfDocument>
