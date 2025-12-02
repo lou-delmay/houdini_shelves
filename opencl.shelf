@@ -5,11 +5,9 @@
  Note, that two definitions of the same element are not allowed in
  a single file. -->
 
-  <tool name="append_wrangle" label="Append Wrangle" icon="SOP_attribwrangle">
-    <helpText><![CDATA[Press W
-]]></helpText>
+  <tool name="append_opencl" label="Append OpenCL" icon="hicon:/SVGIcons.index?COMMON_opencl.svg">
     <script scriptType="python"><![CDATA[import time, random
-def append_wrangle():
+def append_opencl():
     random.seed(time.time())
     randomcolor = hou.Color(1.0,1.0,1.0)
     randomcolor.setHSV((random.random()*360,0.8,1.0))
@@ -19,20 +17,20 @@ def append_wrangle():
     #print(current.childTypeCategory().label())
     if len(nodes)==0:
         if current.childTypeCategory().label() == "Geometry":
-            wrangle = current.createNode('attribwrangle',node_name="Wrangle_001")
-            wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
+            wrangle = current.createNode('opencl',node_name="Wrangle_001")
+            #wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
 
         elif current.childTypeCategory().label() == "Dynamics":
-            wrangle = current.createNode('popwrangle',node_name="Wrangle_001")
-            wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
+            wrangle = current.createNode('gasopencl',node_name="Wrangle_001")
+            #wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
 
         elif current.childTypeCategory().label() == "Solaris":
-            wrangle = current.createNode('attribwrangle',node_name="Wrangle_001")
-            wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
+            wrangle = current.createNode('opencl',node_name="Wrangle_001")
+            #wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
 
         elif current.childTypeCategory().label() == "Copernicus":
-            wrangle = current.createNode('wrangle',node_name="Wrangle_001")
-            wrangle.parm("vexsnippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
+            wrangle = current.createNode('opencl',node_name="Wrangle_001")
+            #wrangle.parm("vexsnippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
         else:
             return
 
@@ -43,23 +41,22 @@ def append_wrangle():
     for node in nodes:
         connections = node.outputConnections()
         if current.childTypeCategory().label() == "Geometry":
-            wrangle = node.parent().createNode('attribwrangle',node_name="Wrangle_001")
-            wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
+            wrangle = node.parent().createNode('opencl',node_name="Wrangle_001")
+            #wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
 
         elif current.childTypeCategory().label() == "Dynamics":
-            wrangle = node.parent().createNode('popwrangle',node_name="Wrangle_001")
-            wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
+            wrangle = node.parent().createNode('gasopencl',node_name="Wrangle_001")
+            #wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
 
         elif current.childTypeCategory().label() == "Solaris":
             wrangle = node.parent().createNode('attribwrangle',node_name="Wrangle_001")
-            wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
+            #wrangle.parm("snippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
 
         elif current.childTypeCategory().label() == "Copernicus":
-            wrangle = node.parent().createNode('wrangle',node_name="Wrangle_001")
-            wrangle.parm("vexsnippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
+            wrangle = node.parent().createNode('opencl',node_name="Wrangle_001")
+            #wrangle.parm("vexsnippet").set("/*hic sunt dracones*/#include \"lou.h\"\n\n")
         else:
             return
-        
         wrangle.setColor(node.color())
         wrangle.setInput(0,node)
         for connection in connections:
@@ -67,6 +64,7 @@ def append_wrangle():
         wrangle.moveToGoodPosition(move_inputs=False)
         wrangle.setSelected(True)
         wrangle.setUserData("nodeshape", "clipped_right")
-append_wrangle()]]></script>
+
+append_opencl()]]></script>
   </tool>
 </shelfDocument>

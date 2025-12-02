@@ -7,17 +7,23 @@
 
   <tool name="rainbow" label="Rainbow" icon="SOP_hairgrowthfield">
     <script scriptType="python"><![CDATA[import time, random, string
+import math
 random.seed(time.time())
 colorbow = hou.Color(1.0,1.0,1.0)
 nodes = hou.selectedNodes()
-cursorPos = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor).cursorPosition()
+#cursorPos = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor).cursorPosition()
+
 minB = nodes[0].position()
 maxB = nodes[0].position()
+
 for node in nodes:
     minB[0] = min(minB[0],node.position()[0])
     minB[1] = min(minB[1],node.position()[1])
     maxB[0] = max(maxB[0],node.position()[0])
     maxB[1] = max(maxB[1],node.position()[1])
+
+cursorPos = hou.Vector2((minB[0],maxB[1]))
+
 centerB = (minB+maxB)/2.0
 cursorPos -= centerB
 mind = 0.0
@@ -29,9 +35,10 @@ for node in nodes:
 
 init = random.random()
 scale = random.random()
+direction = random.random()-0.5
 for node in nodes:
     d = cursorPos.dot(node.position()-centerB)
-    hue = init*360.0+(d-mind)/(maxd-mind)*(scale*100.0+50.0)
+    hue = init*360.0+(d-mind)/(maxd-mind)*(scale*100.0*math.copysign(1.0,direction)+50.0)
     colorbow.setHSV((hue,0.8,1.0))
     node.setColor(colorbow)]]></script>
   </tool>

@@ -5,8 +5,9 @@
  Note, that two definitions of the same element are not allowed in
  a single file. -->
 
-  <toolshelf name="ldelmay" label="Lou">
+  <toolshelf name="lou" label="Lou">
     <memberTool name="append_wrangle"/>
+    <memberTool name="append_opencl"/>
     <memberTool name="cache"/>
     <memberTool name="rand_color"/>
     <memberTool name="rainbow"/>

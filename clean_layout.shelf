@@ -168,6 +168,7 @@ for i in range(len(down_connections)):
         for k in range(len(down_connections[i][j])):
             up_connections[i+1][down_connections[i][j][k]].append(j)
 
+"""
 # no odd lines
 for i in range(len(layout)):
     if len(layout[i])%2==1:
@@ -186,7 +187,8 @@ for i in range(len(layout)):
         layout[i].append(-999)
         down_connections[i].append(emptylist)
         up_connections[i].append(emptylist)
-"""
+
+
 # inserting dummy nodes
 for i in range(len(layout)):
     newlayoutline=[]
@@ -195,21 +197,27 @@ for i in range(len(layout)):
     for j in range(len(layout[i])):
         emptylist = []
         for k in range(len(down_connections[i][j])):
-            down_connections[i][j][k]*=2
+            down_connections[i][j][k]*=4
         for k in range(len(up_connections[i][j])):
-            up_connections[i][j][k]*=2
+            up_connections[i][j][k]*=4
         newlayoutline.append(layout[i][j])
         newdownline.append(down_connections[i][j])
         newupline.append(up_connections[i][j])
         newlayoutline.append(-999)
+        newlayoutline.append(-999)
+        newlayoutline.append(-999)
         newdownline.append(emptylist)
+        newdownline.append(emptylist)
+        newdownline.append(emptylist)
+        newupline.append(emptylist)
+        newupline.append(emptylist)
         newupline.append(emptylist)
     layout[i]=newlayoutline
     up_connections[i]=newupline
     down_connections[i]=newdownline
 
 # rearenging  graph
-for k in range(len(layout)*4):
+for k in range(len(layout)*len(layout)*4):
     for i in range(len(layout)):
         for j in range(len(layout[i])-1):
             current_cost = 0.0
@@ -223,7 +231,7 @@ for k in range(len(layout)*4):
             if i!=0:
                 uplen= (float)(len(layout[i-1]))*0.5
             
-            if random.random()<0.5 or k>len(layout)*2:
+            if random.random()<0.5 or k>len(layout)*len(layout)*3:
                 for down in down_connections[i][j]:
                     current_cost += pow(abs((j-ilen)-(down-downlen)),2.0)
                     swap_cost += pow(abs((j+1-ilen)-(down-downlen)),2.0)
@@ -244,17 +252,17 @@ for k in range(len(layout)*4):
             for downL in down_connections[i][j]:
                 for downR in down_connections[i][j+1]:
                     if downR-downL<0:
-                        current_cost += 64.0
+                        current_cost += 16.0
                     if (downR-downL)*-1.0<0:
-                        swap_cost += 64.0
+                        swap_cost += 16.0
 
             
             for upL in up_connections[i][j]:
                 for upR in up_connections[i][j+1]:
                     if upR-upL<0:
-                        current_cost += 64.0
+                        current_cost += 16.0
                     if (upR-upL)*-1.0<0:
-                        swap_cost += 64.0
+                        swap_cost += 16.0
             
             if swap_cost < current_cost:
                 if i != 0:
