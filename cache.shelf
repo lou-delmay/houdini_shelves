@@ -7,6 +7,7 @@
 
   <tool name="cache" label="Cache" icon="SOP_filecache">
     <script scriptType="python"><![CDATA[import time, random, string
+
 mouse_pos = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor).cursorPosition()
 random.seed(time.time())
 randomcolorc = hou.Color(1.0,1.0,1.0)
@@ -27,10 +28,18 @@ hou.clearAllSelected()
 if len(nodes)>1:
     title+="_001"
 if len(nodes)==0:
+    wrangle = current.createNode("attribwrangle",node_name=title+"_metadata")
+    wrangle.parm("class").set(0)
+    wrangle.parm("snippet").set("s@"+title+"_ExportScene=\"`$HIPNAME`\";\ns@"+title+"_ExportTimestamp=\"`pythonexprs(\"str(__import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S'))\")`\";")
+    wrangle.setSelected(True)
+    wrangle.setColor(randomcolorc)
+    wrangle.setPosition(mouse_pos)
+
     fcache = current.createNode('filecache::2.0',node_name=title)
+    fcache.setInput(0,wrangle)
     fcache.setSelected(True)
+    fcache.moveToGoodPosition(move_inputs=False)
     fcache.setColor(randomcolorc)
-    fcache.setPosition(mouse_pos)
     fcache.parm("loadfromdisk").set(1)
     fcache.parm("basename").set("$OS")
     fcache.parm("basedir").set("$HIP/cache")
@@ -40,20 +49,32 @@ if len(nodes)==0:
     nullno.moveToGoodPosition(move_inputs=False)
     nullno.setSelected(True)
     nullno.setColor(randomcolorn)
+
 for node in nodes:
+    connections = node.outputConnections()
+    wrangle = node.parent().createNode("attribwrangle",node_name=title+"_metadata")
+    wrangle.parm("class").set(0)
+    wrangle.parm("snippet").set("s@"+title+"_ExportScene=\"`$HIPNAME`\";\ns@"+title+"_ExportTimestamp=\"`pythonexprs(\"str(__import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S'))\")`\";")
+    wrangle.setInput(0,node)
+    wrangle.setSelected(True)
+    wrangle.setColor(node.color())
+
     fcache = node.parent().createNode('filecache::2.0',node_name=title)
-    fcache.setInput(0,node)
-    fcache.moveToGoodPosition(move_inputs=False)
+    fcache.setInput(0,wrangle)
     fcache.setSelected(True)
-    fcache.setColor(randomcolorc)
+    fcache.setColor(node.color())
     fcache.parm("loadfromdisk").set(1)
     fcache.parm("basename").set("$OS")
     fcache.parm("basedir").set("$HIP/cache")
     
     nullno = node.parent().createNode('null',node_name="OUT_"+title)
     nullno.setInput(0,fcache)
-    nullno.moveToGoodPosition(move_inputs=False)
     nullno.setSelected(True)
-    nullno.setColor(randomcolorn)]]></script>
+    nullno.setColor(node.color())
+    for connection in connections:
+        connection.outputNode().setInput(connection.inputIndex(),nullno)
+    wrangle.moveToGoodPosition(move_inputs=False)
+    fcache.moveToGoodPosition(move_inputs=False)
+    nullno.moveToGoodPosition(move_inputs=False)]]></script>
   </tool>
 </shelfDocument>

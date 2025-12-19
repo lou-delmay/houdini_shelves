@@ -14,8 +14,7 @@ os.system("explorer .")
   </tool>
 
   <tool name="open_folder" label="Open Folder" icon="hicon:/SVGIcons.index?BUTTONS_folder.svg">
-    <script scriptType="python"><![CDATA[import os
-
-os.system("explorer .")]]></script>
+    <script scriptType="python"><![CDATA[import hou
+hou.ui.showInFileBrowser(hou.hipFile.path())]]></script>
   </tool>
 </shelfDocument>
