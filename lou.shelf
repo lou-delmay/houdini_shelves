@@ -17,5 +17,6 @@
     <memberTool name="ask-mistral"/>
     <memberTool name="dailies"/>
     <memberTool name="clean_layout"/>
+    <memberTool name="Increment Scene"/>
   </toolshelf>
 </shelfDocument>
