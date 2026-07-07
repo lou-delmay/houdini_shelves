@@ -8,6 +8,12 @@
   <tool name="cache" label="Cache" icon="SOP_filecache">
     <script scriptType="python"><![CDATA[import time, random, string
 
+def hashname(size :int):
+    h = ''.join(random.choice(letters) for i in range(size))
+    while h[0].isnumeric():
+        h = ''.join(random.choice(letters) for i in range(size))
+    return h
+
 mouse_pos = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor).cursorPosition()
 random.seed(time.time())
 randomcolorc = hou.Color(1.0,1.0,1.0)
@@ -18,7 +24,7 @@ randomcolorc.setHSV((hue,0.5,1.0))
 rawin = hou.ui.readInput("Name of the cache",title="cache dialog")
 if len(rawin[1])==0:
     letters = string.ascii_letters+string.digits
-    title=''.join(random.choice(letters) for i in range(16))
+    title=hashname(16)
 else:
     title = rawin[1]
 
