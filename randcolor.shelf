@@ -10,7 +10,8 @@
 random.seed(time.time())
 randomcolor = hou.Color(1.0,1.0,1.0)
 randomcolor.setHSV((random.random()*360,0.8,1.0))
-nodes = hou.selectedNodes()
+#nodes = hou.selectedNodes()
+nodes = hou.selectedItems()
 for node in nodes:
     node.setColor(randomcolor)]]></script>
   </tool>
