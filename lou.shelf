@@ -18,5 +18,6 @@
     <memberTool name="dailies"/>
     <memberTool name="clean_layout"/>
     <memberTool name="Increment Scene"/>
+    <memberTool name="stamps"/>
   </toolshelf>
 </shelfDocument>
