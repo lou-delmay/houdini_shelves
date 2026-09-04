@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <!-- This file contains definitions of shelves, toolbars, and tools.
+ It should not be hand-edited when it is being used by the application.
+ Note, that two definitions of the same element are not allowed in
+ a single file. -->
+
+  <tool name="stamps" label="Stamps" icon="hicon:/SVGIcons.index?POP_translation.svg">
+    <script scriptType="python"><![CDATA[import hou
+import os
+import json
+from PySide6 import QtWidgets, QtGui
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QColorDialog
+import re
+import glob
+
+class StampRow(QtWidgets.QWidget):
+    """Custom widget representing a single item in the list."""
+    def __init__(self, name, path, color, on_change=None, parent=None):
+        super(StampRow, self).__init__(parent)
+        
+        self.name = name
+        self.path = path
+        self.color = color
+        self.on_change = on_change # Callback to trigger auto-save
+        self.list_item = None 
+        
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(10)
+        
+        # Empty area / Handle for easy selection
+        self.handle = QtWidgets.QWidget()
+        self.handle.setFixedWidth(20)
+        self.handle.setCursor(Qt.PointingHandCursor)
+        layout.addWidget(self.handle)
+        
+        # Editable Name
+        self.name_edit = QtWidgets.QLineEdit(self.name)
+        self.name_edit.setPlaceholderText("Stamp Name")
+        # --- NEW: Trigger save when user edits the name ---
+        self.name_edit.textEdited.connect(self.trigger_change)
+        
+        # Read-only Location
+        self.path_edit = QtWidgets.QLineEdit(self.path)
+        self.path_edit.setReadOnly(True)
+        self.path_edit.setStyleSheet("background-color: #3a3a3a; color: #cccccc;")
+        
+        # Color Button
+        self.color_btn = QtWidgets.QPushButton()
+        self.color_btn.setFixedSize(60, 20)
+        self.color_btn.clicked.connect(self.pick_color)
+        self.update_color_btn()
+        
+        layout.addWidget(self.name_edit, stretch=2)
+        layout.addWidget(self.path_edit, stretch=3)
+        layout.addWidget(self.color_btn)
+
+    def set_list_item(self, item):
+        self.list_item = item
+
+    def trigger_change(self):
+        """Calls the parent's save function."""
+        if self.on_change:
+            self.on_change()
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        if self.list_item:
+            if event.modifiers() & Qt.ControlModifier:
+                self.list_item.setSelected(not self.list_item.isSelected())
+            elif event.modifiers() & Qt.ShiftModifier:
+                self.list_item.setSelected(True)
+            else:
+                self.list_item.listWidget().clearSelection()
+                self.list_item.setSelected(True)
+
+    def pick_color(self):
+        color = QColorDialog.getColor(self.color, self, "Select Stamp Color")
+        if color.isValid():
+            self.color = color
+            self.update_color_btn()
+            # --- NEW: Trigger save when color changes ---
+            self.trigger_change()
+
+    def update_color_btn(self):
+        self.color_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.color.name()};
+                border: 1px solid #555555;
+                border-radius: 3px;
+            }}
+            QPushButton:hover {{
+                border: 1px solid #aaaaaa;
+            }}
+        """)
+
+
+class Stamps(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super(Stamps, self).__init__(parent)
+        self.setWindowTitle("Stamps Helper")
+        self.setMinimumSize(600, 400)
+        
+        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout.setSpacing(10)
+        
+        self.list_widget = QtWidgets.QListWidget()
+        self.list_widget.setAlternatingRowColors(True)
+        self.list_widget.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        main_layout.addWidget(self.list_widget)
+        
+        btn_layout = QtWidgets.QHBoxLayout()
+        
+        self.btn_save = QtWidgets.QPushButton("Save Node Location")
+        self.btn_create = QtWidgets.QPushButton("Create ObjMerge")
+        self.btn_delete = QtWidgets.QPushButton("Delete")
+        self.btn_delete.setStyleSheet("color: #ff6666;")
+        
+        btn_layout.addWidget(self.btn_save)
+        btn_layout.addWidget(self.btn_create)
+        btn_layout.addWidget(self.btn_delete)
+        main_layout.addLayout(btn_layout)
+        
+        self.chk_relative = QtWidgets.QCheckBox("Use Relative Path for ObjMerge")
+        main_layout.addWidget(self.chk_relative)
+        
+        self.btn_save.clicked.connect(self.save_node_location)
+        self.btn_create.clicked.connect(self.create_objmerge)
+        self.btn_delete.clicked.connect(self.delete_selected_stamps)
+
+        self.load_from_json()
+
+    def get_load_json_path(self):
+        """Finds the latest versioned stamps JSON file in the current directory."""
+        hip_path = hou.hipFile.path()
+        if not hip_path or hou.hipFile.name() == "untitled.hip":
+            pref_dir = hou.text.expandString("$HOUDINI_USER_PREF_DIR")
+            return os.path.join(pref_dir, "stamps_data.json")
+            
+        hip_dir = os.path.dirname(hip_path)
+        hip_name = os.path.basename(hip_path)
+        name_no_ext, _ = os.path.splitext(hip_name)
+        
+        # Extract base name by stripping trailing version numbers (e.g., _v001, _002, _V1)
+        # We use greedy (.*) to ensure we only strip the very last version number
+        match = re.match(r"^(.*)_[vV]?\d+$", name_no_ext)
+        base_name = match.group(1) if match else name_no_ext
+        
+        # Search for all matching stamps jsons in the directory
+        search_pattern = os.path.join(hip_dir, f"{base_name}*_stamps.json")
+        matching_files = glob.glob(search_pattern)
+        
+        if matching_files:
+            # Sort files by the version number to find the latest
+            def extract_version(filepath):
+                fname = os.path.basename(filepath)
+                fname_no_ext = os.path.splitext(fname)[0].replace("_stamps", "")
+                m = re.search(r"(\d+)$", fname_no_ext)
+                return int(m.group(1)) if m else 0
+            
+            matching_files.sort(key=extract_version)
+            return matching_files[-1] # Return the highest version
+        
+        # Fallback to exact current name if no older versions are found
+        return os.path.join(hip_dir, f"{name_no_ext}_stamps.json")
+
+    def closeEvent(self, event):
+        self.save_to_json()
+        super().closeEvent(event)
+
+    def add_stamp_to_list(self, name, path, color):
+        # Pass self.save_to_json as the callback for auto-saving on edits
+        row_widget = StampRow(name, path, color, on_change=self.save_to_json, parent=self)
+        
+        item = QtWidgets.QListWidgetItem()
+        item.setSizeHint(row_widget.sizeHint()) 
+        
+        self.list_widget.addItem(item)
+        self.list_widget.setItemWidget(item, row_widget)
+        row_widget.set_list_item(item)
+
+    # --- PERSISTENCE (JSON) ---
+
+    def get_json_path(self):
+        hip_path = hou.hipFile.path()
+        if not hip_path or hou.hipFile.name() == "untitled.hip":
+            pref_dir = hou.text.expandString("$HOUDINI_USER_PREF_DIR")
+            return os.path.join(pref_dir, "stamps_data.json")
+        
+        hip_dir = os.path.dirname(hip_path)
+        hip_name = os.path.splitext(os.path.basename(hip_path))[0]
+        return os.path.join(hip_dir, f"{hip_name}_stamps.json")
+
+    def save_to_json(self):
+        data = []
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            row = self.list_widget.itemWidget(item)
+            data.append({
+                "name": row.name_edit.text(),
+                "path": row.path_edit.text(),
+                "color": row.color.name()
+            })
+        
+        filepath = self.get_json_path()
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            print(f"Failed to save stamps JSON: {e}")
+
+    def load_from_json(self):
+        filepath = self.get_load_json_path()
+        if not os.path.exists(filepath):
+            return
+            
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+                
+            for entry in data:
+                name = entry.get("name", "Stamp")
+                path = entry.get("path", "")
+                color_hex = entry.get("color", "#787878")
+                color = QtGui.QColor(color_hex)
+                # When loading, we don't need to trigger the save callback
+                self.add_stamp_to_list(name, path, color) 
+        except Exception as e:
+            print(f"Failed to load stamps JSON: {e}")
+
+    # --- CALLBACKS ---
+
+    def save_node_location(self):
+        selected_nodes = hou.selectedNodes()
+        if not selected_nodes:
+            #hou.ui.displayMessage("Please select at least one node in the network.")
+            print("Please select at least one node in the network.")
+            return
+            
+        for node in selected_nodes:
+            # --- NEW: Fetch the actual node color from the graph ---
+            hou_color = node.color()
+            # Convert hou.Color (0.0-1.0) to QColor (0-255)
+            qt_color = QtGui.QColor(
+                int(hou_color.rgb()[0] * 255), 
+                int(hou_color.rgb()[1] * 255), 
+                int(hou_color.rgb()[2] * 255)
+            )
+            
+            self.add_stamp_to_list(node.name(), node.path(), qt_color)
+            
+        self.save_to_json()
+
+    def create_objmerge(self):
+        selected_items = self.list_widget.selectedItems()
+        if not selected_items:
+            #hou.ui.displayMessage("Please select at least one stamp in the list.")
+            print("Please select at least one stamp in the list.")
+            return
+
+        # --- NEW: Get active network editor and its path ---
+        net_editor = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor)
+        if net_editor:
+            target_context = net_editor.pwd()
+        else:
+            target_context = hou.node("/obj") # Fallback if no network editor is open
+
+        use_relative = self.chk_relative.isChecked()
+        created_nodes = []
+        
+        for item in selected_items:
+            row_widget = self.list_widget.itemWidget(item)
+            
+            stamp_name = row_widget.name_edit.text()
+            stamp_path = row_widget.path_edit.text()
+            stamp_color = row_widget.color 
+            
+            merge_node = target_context.createNode("object_merge", stamp_name)
+            created_nodes.append(merge_node)
+            
+            target_node = hou.node(stamp_path)
+            if target_node:
+                if use_relative:
+                    rel_path = merge_node.relativePathTo(target_node)
+                    #rel_path = target_node.relativePathTo(merge_node)
+                    merge_node.parm("objpath1").set(rel_path)
+                else:
+                    merge_node.parm("objpath1").set(stamp_path)
+                    
+                hou_color = hou.Color(stamp_color.redF(), stamp_color.greenF(), stamp_color.blueF())
+                merge_node.setColor(hou_color)
+        
+        center = net_editor.visibleBounds().center()
+        # --- NEW: Center the network editor on the newly created nodes ---
+        if net_editor and created_nodes:
+            for child in target_context.children():
+                child.setSelected(False)
+            for node in created_nodes:
+                node.setSelected(True)
+                node.setPosition(center)
+            for node in created_nodes:
+                node.moveToGoodPosition()
+
+        self.list_widget.clearSelection()
+
+    def delete_selected_stamps(self):
+        selected_items = self.list_widget.selectedItems()
+        if not selected_items:
+            return
+            
+        for item in selected_items:
+            row = self.list_widget.row(item)
+            self.list_widget.takeItem(row)
+            
+        self.save_to_json()
+
+
+def showdialog():
+    parent = hou.ui.mainQtWindow()
+    dialog = Stamps(parent)
+    dialog.show()
+
+QTimer.singleShot(0, showdialog)]]></script>
+  </tool>
+</shelfDocument>
